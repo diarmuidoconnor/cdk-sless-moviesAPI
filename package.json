@@ -1,0 +1,46 @@
+{
+  "name": "cdk-three-tier-serverless",
+  "version": "0.1.0",
+  "bin": {
+    "cdk-three-tier-serverless": "bin/cdk-three-tier-serverless.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "test": "jest",
+    "cdk": "cdk",
+    "deploy": "cdk deploy --out-file config.json"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.93",
+    "@types/jest": "^26.0.10",
+    "@types/jsonwebtoken": "^8.5.8",
+    "@types/jwk-to-pem": "^2.0.1",
+    "@types/node": "10.17.27",
+    "aws-cdk-lib": "2.71.0",
+    "esbuild": "^0.14.36",
+    "jest": "^26.4.2",
+    "ts-jest": "^26.2.0",
+    "ts-node": "^9.0.0",
+    "typescript": "~3.9.7"
+  },
+  "dependencies": {
+    "@aws-cdk/aws-apigatewayv2-authorizers-alpha": "^2.20.0-alpha.0",
+    "@aws-cdk/aws-apigatewayv2-integrations-alpha": "^2.20.0-alpha.0",
+    "aws-cdk-lib": "^2.71.0",
+    "@aws-sdk/client-dynamodb": "^3.67.0",
+    "@aws-sdk/client-s3": "^3.145.0",
+    "@aws-sdk/lib-dynamodb": "^3.79.0",
+    "@aws-sdk/client-ssm": "3.16.0",
+    "@aws-sdk/s3-request-presigner": "3.16.0",
+    "axios": "^0.27.2",
+    "constructs": "^10.1.106",
+    "dotenv": "^16.0.3",
+    "cdk-dia": "^0.7.0",
+    "git-branch": "^2.0.1",
+    "jsonwebtoken": "^8.5.1",
+    "jwk-to-pem": "^2.0.5",
+    "moment": "^2.29.1",
+    "source-map-support": "^0.5.16"
+  }
+}
