@@ -1,15 +1,13 @@
-
-import { Duration } from 'aws-cdk-lib';
-import { Runtime } from 'aws-cdk-lib/aws-lambda';
-import { NodejsFunctionProps } from 'aws-cdk-lib/aws-lambda-nodejs';
-import { RetentionDays } from 'aws-cdk-lib/aws-logs';
-import { DynamoAttributeValue } from 'aws-cdk-lib/aws-stepfunctions-tasks';
-
+import { Duration } from "aws-cdk-lib";
+import { Runtime } from "aws-cdk-lib/aws-lambda";
+import { NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
+import { RetentionDays } from "aws-cdk-lib/aws-logs";
+import { marshall } from "@aws-sdk/util-dynamodb";
 // https://medium.com/@moritzonken/enable-source-maps-for-typescript-in-aws-lambda-83f4cd91338c
 // https://serverless.pub/aws-lambda-node-sourcemaps/
 export const NODE_DEFAULT_PROPS = {
   environment: {
-    NODE_OPTIONS: '--enable-source-maps',
+    NODE_OPTIONS: "--enable-source-maps",
   },
   logRetention: RetentionDays.ONE_DAY,
   bundling: {
@@ -31,26 +29,23 @@ export const getNodejsFunctionProps = (
     ...props?.environment,
   },
 });
- 
-export const generateItem = (movie : any ) => {
-  const genreIDStrings = movie.genre_ids.map ( (id : number) => id.toString()   )
-  return {
-    PutRequest : {
-      Item: {
-        ID: { N: `${movie.id}`  },
-        genre_ids: { NS: genreIDStrings },
-        original_language:  { S : movie.original_language  },
-        original_title:  { S : movie.original_title  },
-        overview:  { S : movie.overview  },
-        popularity: { N : movie.popularity.toString() },
-        title:  { S : movie.title  },
 
-      }
-    }
+export const generateItem = (movie: any) => {
+  return {
+    PutRequest: {
+      Item: marshall({
+        ID: movie.id,
+        genre_ids: movie.genre_ids,
+        original_language: movie.original_language,
+        original_title: movie.original_title,
+        overview: movie.overview,
+        popularity: movie.popularity,
+        title: movie.title,
+      }),
+    },
   };
 };
 
-export const generateBatch = (data : any[]) =>  {
-    return data.map(movie => generateItem(movie))
-
-}
+export const generateBatch = (data: any[]) => {
+  return data.map((movie) => generateItem(movie));
+};

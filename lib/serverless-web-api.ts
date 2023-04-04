@@ -41,6 +41,7 @@ import {
   HttpLambdaResponseType,
 } from "@aws-cdk/aws-apigatewayv2-authorizers-alpha";
 import { DynamoAttributeValue } from "aws-cdk-lib/aws-stepfunctions-tasks";
+import { LambdaIntegration, RestApi } from "aws-cdk-lib/aws-apigateway";
 
 export class ServerlessStack extends Stack {
   constructor(
@@ -56,7 +57,7 @@ export class ServerlessStack extends Stack {
       partitionKey: { name: "ID", type: AttributeType.NUMBER },
       removalPolicy: RemovalPolicy.DESTROY,
       tableName: "Movies",
-    });
+    }); 
 
     // Seed the movies table
     new AwsCustomResource(this, "ddbInitData", {
@@ -74,6 +75,69 @@ export class ServerlessStack extends Stack {
         resources: [moviesTable.tableArn],
       }),
     });
+
+    const api = new RestApi(this, 'MoviesAPI', {
+      description: 'example api gateway',
+      deployOptions: {
+        stageName: 'dev',
+      },
+      // 👇 enable CORS
+      defaultCorsPreflightOptions: {
+        allowHeaders: [
+          'Content-Type',
+          'X-Amz-Date',
+          'Authorization',
+          'X-Api-Key',
+        ],
+        allowMethods: ['OPTIONS', 'GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+        allowCredentials: true,
+        allowOrigins: ['*'],
+      },
+    });
+
+    const moviesEndpoint = api.root.addResource('movies');
+
+    const readMoviesFn = new NodejsFunction(
+      this,
+      "ReadMoviesFn",
+      getNodejsFunctionProps({
+        entry: `${__dirname}/../lambdas/readMovies.ts`,
+        environment: {
+          TABLE_NAME: moviesTable.tableName,
+          REGION: context.region,
+        },
+      })
+      // role: lambdaRole,
+    );
+
+    // 👇 integrate GET /todos with getTodosLambda
+    moviesEndpoint.addMethod(
+      'GET',
+      new LambdaIntegration(readMoviesFn, {proxy: true}),
+    );
+
+    const getMovieByIdFn = new NodejsFunction(
+      this,
+      "GetMovieByIdFn",
+      getNodejsFunctionProps({
+        entry: `${__dirname}/../lambdas/getMovieById.ts`,
+        environment: {
+          TABLE_NAME: moviesTable.tableName,
+          REGION: context.region,
+        },
+      })
+      // role: lambdaRole,
+    );    
+    const movieEndpoint = moviesEndpoint.addResource( '{movieId}' )
+
+    movieEndpoint.addMethod(
+      'GET',
+      new LambdaIntegration(getMovieByIdFn, {proxy: true}),
+
+    )
+
+    new CfnOutput(this, 'apiUrl', {value: api.url});
+
     // const imagesBucket = new s3.Bucket(this, "images", {
     //   removalPolicy: RemovalPolicy.DESTROY,
     //   autoDeleteObjects: true,
@@ -104,22 +168,10 @@ export class ServerlessStack extends Stack {
     // const newImageEventSource = new SqsEventSource(queue);
     // const newReviewEventSource = new SqsEventSource(comprehendQueue);
 
-    const readMoviesFn = new NodejsFunction(
-      this,
-      "ReadMoviesFn",
-      getNodejsFunctionProps({
-        entry: `${__dirname}/../lambdas/readMovies.ts`,
-        environment: {
-          TABLE_NAME: moviesTable.tableName,
-          REGION: context.region,
-        },
-      })
-      // role: lambdaRole,
-    );
 
     // Permission
     moviesTable.grantReadData(readMoviesFn)
-    
+    moviesTable.grantReadData(getMovieByIdFn);
     // const getMoviesFn = new NodejsFunction(this, "GetMoviesFn", {
     //   // architecture: Architecture.ARM_64,
     //   runtime: lambda.Runtime.NODEJS_14_X,
