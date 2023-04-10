@@ -13,8 +13,9 @@
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.93",
+    "@types/bcryptjs": "^2.4.2",
     "@types/jest": "^26.0.10",
-    "@types/jsonwebtoken": "^8.5.8",
+    "@types/jsonwebtoken": "^8.5.9",
     "@types/jwk-to-pem": "^2.0.1",
     "@types/node": "10.17.27",
     "aws-cdk-lib": "2.71.0",
@@ -35,6 +36,7 @@
     "@aws-sdk/util-dynamodb": "^3.303.0",
     "aws-cdk-lib": "^2.71.0",
     "axios": "^0.27.2",
+    "bcryptjs": "^2.4.3",
     "cdk-dia": "^0.7.0",
     "constructs": "^10.1.106",
     "dotenv": "^16.0.3",

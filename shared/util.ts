@@ -21,7 +21,7 @@ export const getNodejsFunctionProps = (
 ): NodejsFunctionProps => ({
   ...NODE_DEFAULT_PROPS,
   runtime: Runtime.NODEJS_14_X,
-  timeout: Duration.seconds(3),
+  timeout: Duration.seconds(10),
   memorySize: 128,
   ...props,
   environment: {

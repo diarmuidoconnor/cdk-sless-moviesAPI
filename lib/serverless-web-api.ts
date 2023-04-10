@@ -41,7 +41,13 @@ import {
   HttpLambdaResponseType,
 } from "@aws-cdk/aws-apigatewayv2-authorizers-alpha";
 import { DynamoAttributeValue } from "aws-cdk-lib/aws-stepfunctions-tasks";
-import { LambdaIntegration, RestApi } from "aws-cdk-lib/aws-apigateway";
+import {
+  AuthorizationType,
+  LambdaIntegration,
+  RestApi,
+  TokenAuthorizer,
+} from "aws-cdk-lib/aws-apigateway";
+import { Effect, PolicyStatement } from "aws-cdk-lib/aws-iam";
 
 export class ServerlessStack extends Stack {
   constructor(
@@ -57,7 +63,14 @@ export class ServerlessStack extends Stack {
       partitionKey: { name: "ID", type: AttributeType.NUMBER },
       removalPolicy: RemovalPolicy.DESTROY,
       tableName: "Movies",
-    }); 
+    });
+
+    const usersTable = new Table(this, "UsersTable", {
+      billingMode: BillingMode.PAY_PER_REQUEST,
+      partitionKey: { name: "USERNAME", type: AttributeType.STRING },
+      removalPolicy: RemovalPolicy.DESTROY,
+      tableName: "users",
+    });    
 
     // Seed the movies table
     new AwsCustomResource(this, "ddbInitData", {
@@ -76,27 +89,6 @@ export class ServerlessStack extends Stack {
       }),
     });
 
-    const api = new RestApi(this, 'MoviesAPI', {
-      description: 'example api gateway',
-      deployOptions: {
-        stageName: 'dev',
-      },
-      // 👇 enable CORS
-      defaultCorsPreflightOptions: {
-        allowHeaders: [
-          'Content-Type',
-          'X-Amz-Date',
-          'Authorization',
-          'X-Api-Key',
-        ],
-        allowMethods: ['OPTIONS', 'GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
-        allowCredentials: true,
-        allowOrigins: ['*'],
-      },
-    });
-
-    const moviesEndpoint = api.root.addResource('movies');
-
     const readMoviesFn = new NodejsFunction(
       this,
       "ReadMoviesFn",
@@ -110,33 +102,127 @@ export class ServerlessStack extends Stack {
       // role: lambdaRole,
     );
 
-    // 👇 integrate GET /todos with getTodosLambda
-    moviesEndpoint.addMethod(
-      'GET',
-      new LambdaIntegration(readMoviesFn, {proxy: true}),
-    );
-
     const getMovieByIdFn = new NodejsFunction(
       this,
       "GetMovieByIdFn",
       getNodejsFunctionProps({
-        entry: `${__dirname}/../lambdas/getMovieById.ts`,
+        entry: `${__dirname}/../lambdas/getMovieByID.ts`,
         environment: {
           TABLE_NAME: moviesTable.tableName,
           REGION: context.region,
         },
       })
       // role: lambdaRole,
-    );    
-    const movieEndpoint = moviesEndpoint.addResource( '{movieId}' )
+    );
+
+    const registerUserFn = new NodejsFunction(
+      this,
+      "RegisterUsersFn",
+      getNodejsFunctionProps({
+        entry: `${__dirname}/../lambdas/registerUser.ts`,
+        environment: {
+          TABLE_NAME: usersTable.tableName,
+          REGION: context.region,
+        },
+      })
+      // role: lambdaRole,
+    );
+
+    const loginUserFn = new NodejsFunction(
+      this,
+      "LoginUsersFn",
+      getNodejsFunctionProps({
+        entry: `${__dirname}/../lambdas/loginUser.ts`,
+        environment: {
+          TABLE_NAME: usersTable.tableName,
+          REGION: context.region,
+        },
+      })
+      // role: lambdaRole,
+    );
+
+    const apiAuthorizerFn = new NodejsFunction(
+      this,
+      "APIAuthorizerFn",
+      getNodejsFunctionProps({
+        entry: `${__dirname}/../lambdas/apiAuthorizer.ts`,
+        environment: {
+          TABLE_NAME: moviesTable.tableName,
+          REGION: context.region,
+        },
+      })
+      // role: lambdaRole,
+    );
+
+    moviesTable.grantFullAccess(readMoviesFn);
+    moviesTable.grantReadData(getMovieByIdFn);
+    usersTable.grantFullAccess(registerUserFn)
+    usersTable.grantReadData(loginUserFn)
+
+    const api = new RestApi(this, "MoviesAPI", {
+      description: "example api gateway",
+      deployOptions: {
+        stageName: "dev",
+      },
+      // 👇 enable CORS
+      defaultCorsPreflightOptions: {
+        allowHeaders: [
+          "Content-Type",
+          "X-Amz-Date",
+          "Authorization",
+          "X-Api-Key",
+        ],
+        allowMethods: ["OPTIONS", "GET", "POST", "PUT", "PATCH", "DELETE"],
+        allowCredentials: true,
+        allowOrigins: ["*"],
+      },
+    });
+
+    const apiAuthorizer = new TokenAuthorizer(this, "Authorizer", {
+      handler: apiAuthorizerFn,
+      identitySource:'method.request.header.AuthorizeToken',
+      // identitySource:'method.request.header.Authorization',
+
+    });
+
+    const moviesEndpoint = api.root.addResource("movies");
+
+    moviesEndpoint.addMethod(
+      "GET",
+      new LambdaIntegration(readMoviesFn, { proxy: true }),
+      {
+        authorizer: apiAuthorizer,
+        authorizationType: AuthorizationType.CUSTOM,
+      }
+    );
+
+    const movieEndpoint = moviesEndpoint.addResource("{movieId}");
 
     movieEndpoint.addMethod(
-      'GET',
-      new LambdaIntegration(getMovieByIdFn, {proxy: true}),
+      "GET",
+      new LambdaIntegration(getMovieByIdFn, { proxy: true }),
+    );
 
-    )
+    const usersEndpoint = api.root.addResource("users");
 
-    new CfnOutput(this, 'apiUrl', {value: api.url});
+    usersEndpoint.addMethod(
+      "POST",
+      new LambdaIntegration(registerUserFn, { proxy: true })
+    );
+
+    const loginEndpoint = usersEndpoint.addResource("login");
+
+    loginEndpoint.addMethod(
+      "POST",
+      new LambdaIntegration(loginUserFn, { proxy: true }),
+    );    
+
+    //   new PolicyStatement({
+    //     effect: Effect.ALLOW,
+    //   resources: ["*"],
+    //   actions: ["'execute-api:Invoke'"],
+    // });
+    new CfnOutput(this, "apiUrl", { value: api.url });
 
     // const imagesBucket = new s3.Bucket(this, "images", {
     //   removalPolicy: RemovalPolicy.DESTROY,
@@ -168,10 +254,7 @@ export class ServerlessStack extends Stack {
     // const newImageEventSource = new SqsEventSource(queue);
     // const newReviewEventSource = new SqsEventSource(comprehendQueue);
 
-
     // Permission
-    moviesTable.grantReadData(readMoviesFn)
-    moviesTable.grantReadData(getMovieByIdFn);
     // const getMoviesFn = new NodejsFunction(this, "GetMoviesFn", {
     //   // architecture: Architecture.ARM_64,
     //   runtime: lambda.Runtime.NODEJS_14_X,
