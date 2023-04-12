@@ -25,6 +25,7 @@ import movies from "../seed/movies";
 import {
   SqsEventSource,
   DynamoEventSource,
+  
 } from "aws-cdk-lib/aws-lambda-event-sources";
 
 import {
@@ -48,6 +49,7 @@ import {
   TokenAuthorizer,
 } from "aws-cdk-lib/aws-apigateway";
 import { Effect, PolicyStatement } from "aws-cdk-lib/aws-iam";
+import { StartingPosition } from "aws-cdk-lib/aws-lambda";
 
 export class ServerlessStack extends Stack {
   constructor(
@@ -70,8 +72,20 @@ export class ServerlessStack extends Stack {
       partitionKey: { name: "USERNAME", type: AttributeType.STRING },
       removalPolicy: RemovalPolicy.DESTROY,
       tableName: "users",
+      stream: StreamViewType.NEW_IMAGE,
     });    
 
+    const favouritesTable = new Table(this, "FavouriteMoviesTable", {
+      billingMode: BillingMode.PAY_PER_REQUEST,
+      partitionKey: { name: "Username", type: AttributeType.STRING },
+      sortKey: {name: 'MovieId', type: AttributeType.NUMBER},
+      removalPolicy: RemovalPolicy.DESTROY,
+      tableName: "FavouriteMovies",
+      stream: StreamViewType.NEW_IMAGE,
+    });   
+
+
+    
     // Seed the movies table
     new AwsCustomResource(this, "ddbInitData", {
       onCreate: {
@@ -154,10 +168,53 @@ export class ServerlessStack extends Stack {
       // role: lambdaRole,
     );
 
+    const addFavouriteFn = new NodejsFunction(
+      this,
+      "AddFavouriteFn",
+      getNodejsFunctionProps({
+        entry: `${__dirname}/../lambdas/addFavourite.ts`,
+        environment: {
+          FAVOURITES_TABLE_NAME: favouritesTable.tableName,
+          USERS_TABLE_NAME: usersTable.tableName,
+          MOVIES_TABLE_NAME: moviesTable.tableName,
+          REGION: context.region,
+        },
+      })
+      // role: lambdaRole,
+    );    
+
+
+    const confirmRegistrationFn = new NodejsFunction(
+      this,
+      "ConfirmRegistrationFn",
+      getNodejsFunctionProps({
+        entry: `${__dirname}/../lambdas/confirmRegistration.ts`,
+        environment: {
+          REGION: context.region,
+        },
+      })
+      // role: lambdaRole,
+    );   
+
+    // Database permissions 
+
     moviesTable.grantFullAccess(readMoviesFn);
     moviesTable.grantReadData(getMovieByIdFn);
     usersTable.grantFullAccess(registerUserFn)
     usersTable.grantReadData(loginUserFn)
+    favouritesTable.grantReadWriteData(addFavouriteFn); 
+    usersTable.grantReadData(addFavouriteFn)
+    moviesTable.grantReadData(addFavouriteFn)
+    
+    confirmRegistrationFn.addToRolePolicy(
+      new PolicyStatement({
+        effect: Effect.ALLOW,
+        resources: ["*"],
+        actions: ["ses:SendEmail"],
+      })
+    );
+
+    // REST API
 
     const api = new RestApi(this, "MoviesAPI", {
       description: "example api gateway",
@@ -186,7 +243,6 @@ export class ServerlessStack extends Stack {
     });
 
     const moviesEndpoint = api.root.addResource("movies");
-
     moviesEndpoint.addMethod(
       "GET",
       new LambdaIntegration(readMoviesFn, { proxy: true }),
@@ -197,26 +253,42 @@ export class ServerlessStack extends Stack {
     );
 
     const movieEndpoint = moviesEndpoint.addResource("{movieId}");
-
     movieEndpoint.addMethod(
       "GET",
       new LambdaIntegration(getMovieByIdFn, { proxy: true }),
     );
 
     const usersEndpoint = api.root.addResource("users");
-
     usersEndpoint.addMethod(
       "POST",
       new LambdaIntegration(registerUserFn, { proxy: true })
     );
 
     const loginEndpoint = usersEndpoint.addResource("login");
-
     loginEndpoint.addMethod(
       "POST",
       new LambdaIntegration(loginUserFn, { proxy: true }),
     );    
 
+    const favouritesEndpoint = api.root.addResource("favourites");
+    favouritesEndpoint.addMethod(
+      "POST",
+      new LambdaIntegration(addFavouriteFn, { proxy: true }),
+      // {
+      //   authorizer: apiAuthorizer,
+      //   authorizationType: AuthorizationType.CUSTOM,
+      // }
+    );  
+
+
+    // Event Sources
+
+    confirmRegistrationFn.addEventSource(
+      new DynamoEventSource(usersTable, {
+        startingPosition: StartingPosition.LATEST,
+      })
+    );
+    
     //   new PolicyStatement({
     //     effect: Effect.ALLOW,
     //   resources: ["*"],

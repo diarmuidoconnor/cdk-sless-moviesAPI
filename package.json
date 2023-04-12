@@ -30,6 +30,7 @@
     "@aws-cdk/aws-apigatewayv2-integrations-alpha": "^2.20.0-alpha.0",
     "@aws-sdk/client-dynamodb": "^3.67.0",
     "@aws-sdk/client-s3": "^3.145.0",
+    "@aws-sdk/client-ses": "^3.310.0",
     "@aws-sdk/client-ssm": "3.16.0",
     "@aws-sdk/lib-dynamodb": "^3.79.0",
     "@aws-sdk/s3-request-presigner": "3.16.0",

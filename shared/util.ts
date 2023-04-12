@@ -3,6 +3,7 @@ import { Runtime } from "aws-cdk-lib/aws-lambda";
 import { NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
 import { RetentionDays } from "aws-cdk-lib/aws-logs";
 import { marshall } from "@aws-sdk/util-dynamodb";
+ 
 // https://medium.com/@moritzonken/enable-source-maps-for-typescript-in-aws-lambda-83f4cd91338c
 // https://serverless.pub/aws-lambda-node-sourcemaps/
 export const NODE_DEFAULT_PROPS = {
