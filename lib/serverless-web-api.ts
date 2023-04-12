@@ -84,7 +84,12 @@ export class ServerlessStack extends Stack {
       stream: StreamViewType.NEW_IMAGE,
     });   
 
-
+    const popularMoviesTable = new Table(this, "PopularMoviesTable", {
+      billingMode: BillingMode.PAY_PER_REQUEST,
+      partitionKey: { name: "MOVIEID", type: AttributeType.NUMBER },
+      removalPolicy: RemovalPolicy.DESTROY,
+      tableName: "PopularMovies",
+    }); 
     
     // Seed the movies table
     new AwsCustomResource(this, "ddbInitData", {
@@ -102,6 +107,8 @@ export class ServerlessStack extends Stack {
         resources: [moviesTable.tableArn],
       }),
     });
+
+    // Lambdas 
 
     const readMoviesFn = new NodejsFunction(
       this,
@@ -183,13 +190,25 @@ export class ServerlessStack extends Stack {
       // role: lambdaRole,
     );    
 
-
     const confirmRegistrationFn = new NodejsFunction(
       this,
       "ConfirmRegistrationFn",
       getNodejsFunctionProps({
         entry: `${__dirname}/../lambdas/confirmRegistration.ts`,
         environment: {
+          REGION: context.region,
+        },
+      })
+      // role: lambdaRole,
+    );   
+
+    const updatePopularMoviesFn = new NodejsFunction(
+      this,
+      "UpdatePopularMoviesFn",
+      getNodejsFunctionProps({
+        entry: `${__dirname}/../lambdas/updatePopularMovies.ts`,
+        environment: {
+          POPULAR_MOVIES_TABLE_NAME: popularMoviesTable.tableName,
           REGION: context.region,
         },
       })
@@ -205,7 +224,8 @@ export class ServerlessStack extends Stack {
     favouritesTable.grantReadWriteData(addFavouriteFn); 
     usersTable.grantReadData(addFavouriteFn)
     moviesTable.grantReadData(addFavouriteFn)
-    
+    popularMoviesTable.grantReadWriteData(updatePopularMoviesFn)
+
     confirmRegistrationFn.addToRolePolicy(
       new PolicyStatement({
         effect: Effect.ALLOW,
@@ -289,6 +309,12 @@ export class ServerlessStack extends Stack {
       })
     );
     
+    updatePopularMoviesFn.addEventSource(
+      new DynamoEventSource(favouritesTable, {
+        startingPosition: StartingPosition.LATEST,
+      })
+    );
+
     //   new PolicyStatement({
     //     effect: Effect.ALLOW,
     //   resources: ["*"],
